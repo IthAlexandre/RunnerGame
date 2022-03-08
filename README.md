@@ -1,2 +1,0 @@
-# RunnerGame
-Runner game app
