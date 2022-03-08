@@ -1,0 +1,532 @@
+<canvas id="game" width="1080" height="650"></canvas>
+<!--<canvas id="game" width="640" height="480"></div></canvas>-->
+<script src="https://unpkg.com/mathjs@4.0.0/dist/math.min.js"></script>
+<script>
+  c = document.getElementById("game");
+  cc = c.getContext("2d");
+  var footer;
+  var hero;
+  var entities = [];
+  var movingEntities = [];
+  var mouseEntity;
+  var colors = ["yellow", "blue", "red", "green", "cyan", "magenta"];
+  var imgHero = new Image();
+  var imgMap = new Image();
+  var imgTrail = new Image();
+  var imgBackground = new Image();
+  var imgFooter = new Image();
+  var imgProjectile = new Image();
+  var camera;
+  var input;
+  var canvas = document.getElementById("game");
+  var MAP_WIDTH = canvas.width;
+  var MAP_HEIGHT = canvas.height;
+  imgHero.src = "professorSheet.png";
+  imgProjectile.src = "4-colors-of-glowing-balls-1.png";
+  imgMap.src = "img.png";
+  imgBackground.src =
+    "https://t4.ftcdn.net/jpg/01/79/07/77/240_F_179077796_P6UNHX6KBpb1hITJSF1gN173qw4GF98U.jpg";
+  imgFooter.src =
+    "https://i.pinimg.com/736x/c4/f5/28/c4f528279adda7688ca2562871293701--uncharted-drakes-fortune-texture-painting.jpg";
+  imgTrail.src =
+    "https://ccrgeek.files.wordpress.com/2012/06/4-colors-of-glowing-balls-1.png";
+
+  //'https://orig00.deviantart.net/9b3c/f/2009/193/f/2/blank_sprite_sheet_4_2_by_knightyamato.png';//
+  //'EBRoboteditcrMatsuoKaito.png';
+  class Entity {
+    constructor(width, height, x, y, img) {
+      this.width = width;
+      this.height = height;
+      this.position = new Position(x, y);
+      this.img = img;
+      entities.push(this);
+    }
+    paint() {
+      cc.drawImage(
+        this.img,
+        this.position.x,
+        this.position.y /*, this.width, this.height*/
+      );
+    }
+    destroy() {
+      entities.splice(entities.indexOf(this), 1);
+    }
+  }
+  class MovingEntity extends Entity {
+    constructor(width, height, x, y, xv, yv, img) {
+      super(width, height, x, y, img);
+      this.xv = xv;
+      this.yv = yv;
+      movingEntities.push(this);
+    }
+    move() {
+      if (this.yv > 0) {
+        for (var i = 0; i < this.yv; i++) {
+          if (!map.isInMap(this)) {
+            this.position.y--;
+            break;
+          }
+          this.position.y++;
+        }
+      }
+      if (this.yv < 0) {
+        for (var i = 0; i > this.yv; i--) {
+          if (!map.isInMap(this)) {
+            this.position.y++;
+            break;
+          }
+          this.position.y--;
+        }
+      }
+      if (this.xv > 0) {
+        for (var i = 0; i < this.xv; i++) {
+          if (!map.isInMap(this)) {
+            this.position.x--;
+            break;
+          }
+          this.position.x++;
+        }
+      }
+      if (this.xv < 0) {
+        for (var i = 0; i > this.xv; i--) {
+          if (!map.isInMap(this)) {
+            this.position.x++;
+            break;
+          }
+          this.position.x--;
+        }
+      }
+    }
+    destroy() {
+      movingEntities.splice(movingEntities.indexOf(this), 1);
+      super.destroy();
+    }
+    isLiving() {
+      /*if (this.isCollidingWith(mouseEntity)){
+			return false;
+		}*/
+      /*if (this.collidingOthers()){
+			return false;
+		}*/
+      return true;
+    }
+    isCollidingWith(other) {
+      return areColliding(this, other);
+    }
+    collidingOthers() {
+      if (movingEntities.length > 0) {
+        for (var i = 0; i < movingEntities.length; i++) {
+          var otherMovingEntity = movingEntities[i];
+          if (
+            otherMovingEntity != this &&
+            this.isCollidingWith(otherMovingEntity)
+          ) {
+            otherMovingEntity.destroy();
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+  }
+  class Footer extends Entity {
+    constructor(width, height) {
+      super(width, height, 0, c.height - height, imgFooter);
+    }
+    paint() {
+      var pttrn = cc.createPattern(imgFooter, "repeat");
+      cc.fillStyle = pttrn;
+      cc.fillRect(0, c.height - this.height, this.width, this.height);
+    }
+  }
+  class Hero extends MovingEntity {
+    constructor() {
+      super(64, 64, 0, MAP_HEIGHT - footer.height - 64, 0, 20, imgHero);
+      this.animations = [];
+      //constructor(entity, width, height, x, y, img, nbColumns, nbLines, firstSprite, nbSprites, duration)
+      this.animations.push(
+        new Animation(
+          this,
+          576,
+          256,
+          this.position.x,
+          this.position.y,
+          imgHero,
+          9,
+          4,
+          0,
+          2,
+          1
+        )
+      );
+      this.currentAnimation = Math.floor(
+        Math.random() * this.animations.length
+      );
+      this.setCurrentAnimation(this.currentAnimation);
+      //this.trail = new Trail(this);
+    }
+    animate() {
+      //this.trail.update();
+    }
+    move() {
+      this.xv = 0;
+      this.yv = 0;
+      /*if(input.isPressed["d"]){
+			this.xv = 20;
+		}
+		if(input.isPressed["q"]){
+			this.xv = -20;
+		}*/
+      if (input.isPressed[" "]) {
+        this.fire();
+      }
+      if (mouseEntity.position.x > this.position.x) {
+        if (this.position.x + 20 < mouseEntity.position.x) {
+          this.xv = 20;
+        } else {
+          this.xv = mouseEntity.position.x - this.position.x;
+        }
+      } else if (mouseEntity.position.x < this.position.x) {
+        if (this.position.x - mouseEntity.position.x - 20 > 0) {
+          this.xv = -20;
+        } else {
+          this.xv = mouseEntity.position.x - this.position.x;
+        }
+      } else {
+      }
+      super.move();
+      this.animate();
+    }
+    fire() {
+      movingEntities.push(
+        new Projectile(5, 5, this.position.x, this.position.y, 0, -40)
+      );
+    }
+    paint() {
+      //cc.fillRect(camera.relative(new Position(hero.position.x, hero.position.y)).x, camera.relative(new Position(hero.position.x, hero.position.y)).y, this.width, this.height);
+      this.animations[this.currentAnimation].paint(
+        camera.relative(new Position(hero.position.x, hero.position.y)).x,
+        camera.relative(new Position(hero.position.x, hero.position.y)).y
+      );
+    }
+    changingState() {
+      /*this.trail.paint();*/
+    }
+    destroy() {
+      this.animations.forEach(function (Entity) {
+        Entity.destroy();
+      });
+      super.destroy();
+    }
+    setCurrentAnimation(iAnimation) {
+      this.currentAnimation = iAnimation;
+      this.animations.forEach(function (animation) {
+        animation.pause();
+      });
+      this.animations[iAnimation].unpause();
+    }
+  }
+  class Projectile extends MovingEntity {
+    //TODO : multiple colors
+    constructor(width, height, x, y, xv, yv, img = imgProjectile) {
+      //constructor(width, height, x, y, xv, yv, img)
+      super(width, height, x, y, xv, yv, img);
+      this.animations = [];
+      //constructor(entity, width, height, x, y, img, nbColumns, nbLines, firstSprite, nbSprites, duration)
+      this.animations.push(
+        new Animation(this, 384, 256, x, y, img, 12, 8, 0, 3, 1)
+      );
+    }
+    destroy() {
+      this.animations.forEach(function (Entity) {
+        Entity.destroy();
+      });
+      super.destroy();
+    }
+    paint() {
+      this.animations[0].paint(
+        camera.relative(new Position(this.position.x, this.position.y)).x,
+        camera.relative(new Position(this.position.x, this.position.y)).y
+      );
+    }
+    move() {
+      if (map.isInMap(this)) {
+        this.position.y += this.yv;
+        this.position.x += this.xv;
+      } else {
+        this.destroy();
+      }
+    }
+  }
+  class Position {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+    }
+  }
+  class Vector {
+    constructor(xv, yv) {
+      this.xv = xv;
+      this.yv = yv;
+    }
+  }
+  window.onload = function () {
+    footer = new Footer(c.width, c.height * 0.1);
+    mouseEntity = new Entity(10, 10, 0, 0);
+    //hero = new Hero(Math.floor((Math.random() * c.width) + 1));
+    hero = new Hero(0);
+    input = new Input(["q", "d", " ", "Control"]);
+    camera = new Camera(c.width, c.height, new Position(0, 0), hero, 250);
+    setInterval(update, 1000 / 30);
+    //setInterval(spawnHero,1000/3);
+    map = new Map(MAP_WIDTH, MAP_HEIGHT, 50, 50, null, 0, imgMap);
+    window.requestAnimationFrame(paint);
+    /*c.addEventListener('mousemove', function(e){
+		if(e.clientX)
+	});*/
+  };
+  function update() {
+    moveEntities();
+    // camera.center();
+
+    //console.log(movingEntities);
+    //console.log(entities);
+    //paint();
+  }
+  function paint() {
+    paintBackground("lightblue");
+    map.paint();
+    //paintEntities();
+    paintMovingEntities();
+    footer.paint();
+    debug();
+    //cc.fillText("x:"+camera.position.x+"|y:"+camera.position.y,10,50);
+    window.requestAnimationFrame(paint);
+  }
+  function debug() {
+    cc.font = "30px Arial";
+    cc.fillStyle = "black";
+    cc.fillText("camera.position.x:" + camera.position.x, 10, 40);
+    cc.fillText("camera.position.y:" + camera.position.y, 10, 80);
+    cc.fillText("hero.position.x:" + hero.position.x, 10, 120);
+    cc.fillText("hero.position.y:" + hero.position.y, 10, 160);
+    cc.fillText("isInMap:" + map.isInMap(hero), 10, 200);
+  }
+  class Camera {
+    constructor(width, height, position, subject, padding) {
+      this.position = position;
+      this.width = width;
+      this.height = height;
+      this.subject = subject;
+      this.padding = padding;
+    }
+    center() {
+      //this.position = new Position(this.subject.position.x-this.padding, this.subject.position.y-this.padding);
+    }
+    relative(position) {
+      this.center();
+      return new Position(
+        position.x - this.position.x,
+        position.y - this.position.y
+      );
+    }
+  }
+  function paintEntities() {
+    entities.forEach(function (entity) {
+      entity.paint();
+    });
+  }
+  function paintMovingEntities() {
+    movingEntities.forEach(function (movingEntity) {
+      movingEntity.paint();
+    });
+  }
+  function moveEntities() {
+    movingEntities.forEach(function (movingEntity) {
+      movingEntity.move();
+      if (!movingEntity.isLiving()) {
+        movingEntity.destroy();
+      }
+    });
+  }
+  function paintBackground(color) {
+    cc.fillStyle = color;
+    cc.fillRect(0, 0, c.width, c.height);
+    //cc.drawImage(imgBackground, 0, 0);
+    /*var pttrn = cc.createPattern(imgBackground, 'repeat');
+	cc.fillStyle = pttrn;
+    cc.fillRect(0, 0, c.width, c.height); */
+  }
+  document.addEventListener("click", alertDebug);
+  document.addEventListener("mousemove", updateMouse);
+  function updateMouse() {
+    mouseEntity.position.x = event.clientX;
+    mouseEntity.position.y = event.clientY;
+  }
+  function alertDebug() {
+    mouseEntity.position.x = event.clientX;
+    mouseEntity.position.y = event.clientY;
+  }
+  function areColliding(a, b) {
+    return !(
+      a.position.x + a.width < b.position.x ||
+      a.position.x >= b.position.x + b.width ||
+      a.position.y + a.height < b.position.y ||
+      a.position.y >= b.position.y + b.height
+    );
+  }
+  class Animation extends Entity {
+    constructor(
+      entity,
+      width,
+      height,
+      x,
+      y,
+      img,
+      nbColumns,
+      nbLines,
+      firstSprite,
+      nbSprites,
+      duration
+    ) {
+      super(width, height, x, y, img);
+      //this.entity = entity;
+      this.nbColumns = nbColumns;
+      this.nbLines = nbLines;
+      this.firstSprite = firstSprite;
+      this.nbSprites = nbSprites;
+      this.duration = duration;
+      this.currentSprite = firstSprite;
+      this.onPause = false;
+      this.onStop = false;
+      var that = this;
+      this.timer = setInterval(function () {
+        that.play();
+      }, (that.duration / nbSprites) * 1000);
+    }
+    pause() {
+      this.onPause = true;
+    }
+    unpause() {
+      this.onPause = false;
+    }
+    paint(x, y) {
+      if (this.onPause) {
+        return;
+      }
+      var iC = this.currentSprite % this.nbColumns;
+      var iL = Math.floor(this.currentSprite / this.nbColumns);
+      var spriteW = this.width / this.nbColumns;
+      var spriteH = this.height / this.nbLines;
+      cc.drawImage(
+        this.img,
+        iC * spriteW,
+        iL * spriteH,
+        spriteW,
+        spriteH,
+        x,
+        y,
+        spriteW,
+        spriteH
+      );
+    }
+    play() {
+      if (!this.onPause) {
+        this.currentSprite++;
+        if (this.currentSprite >= this.firstSprite + this.nbSprites) {
+          this.currentSprite = this.firstSprite;
+        }
+      }
+    }
+    destroy() {
+      clearTimeout(this.timer);
+      super.destroy();
+    }
+  }
+  class Map {
+    constructor(width, height, img) {
+      this.width = width;
+      this.height = height;
+      this.initMap();
+    }
+    initMap() {}
+    loadMap(dFile) {
+      //TODO
+    }
+    saveMap(sFile) {
+      //TODO
+    }
+    paint() {}
+    isInMap(entity) {
+      return !(
+        map.width < entity.position.x + entity.width ||
+        0 > entity.position.x ||
+        map.height < entity.position.y ||
+        0 >= entity.position.y + entity.height
+      );
+    }
+  }
+  class Trail {
+    constructor(owner) {
+      this.owner = owner;
+      this.trail = [];
+    }
+    destroy() {
+      this.trail.forEach(function (Entity) {
+        Entity.destroy();
+      });
+    }
+    update() {
+      var tempTrail = new Animation(
+        this,
+        384,
+        256,
+        this.owner.position.x,
+        this.owner.position.y,
+        imgTrail,
+        12,
+        8,
+        4,
+        3,
+        0.5
+      );
+      this.trail.push(tempTrail);
+      if (this.trail.length > 7) {
+        this.trail.shift().destroy();
+      }
+    }
+    paint() {
+      for (var i = 0; i < this.trail.length; i++) {
+        this.trail[i].paint(this.trail[i].position.x, this.trail[i].position.y);
+      }
+    }
+  }
+  /*TODO : 
+-Changement de pente
+-Contrôles
+-Remplacer foreach par for
+*/
+  class Input {
+    constructor(possibleInputs) {
+      this.possibleInputs = possibleInputs;
+      this.isPressed = [];
+      this.isPressed["a"] = false;
+      this.possibleInputs.forEach(function (input) {
+        var test = input;
+        this.isPressed[input] = false;
+        document.addEventListener("keydown", (event) => {
+          const keyName = event.key;
+          if (keyName == input) {
+            this.isPressed[input] = true;
+          }
+        });
+        document.addEventListener("keyup", (event) => {
+          const keyName = event.key;
+          if (keyName == input) {
+            this.isPressed[input] = false;
+          }
+        });
+      }, this);
+    }
+  }
+</script>

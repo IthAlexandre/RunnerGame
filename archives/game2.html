@@ -1,0 +1,547 @@
+<canvas id="game" width="1080" height="650"></canvas>
+<!--<canvas id="game" width="640" height="480"></div></canvas>-->
+<script src="https://unpkg.com/mathjs@4.0.0/dist/math.min.js"></script>
+<script>
+c=document.getElementById('game');
+cc=c.getContext('2d');
+var footer;
+var hero;
+var entities = [];
+var movingEntities = [];
+var mouseEntity;
+var colors = ["yellow","blue","red","green","cyan","magenta"];
+var imgHero = new Image();
+var imgTrail = new Image();
+var imgBackground = new Image();
+var imgFooter = new Image();
+var grounds = [];
+var camera;
+var input;
+var GRAVITY = 40;
+imgHero.src = 'img.png';
+imgBackground.src = 'https://t4.ftcdn.net/jpg/01/79/07/77/240_F_179077796_P6UNHX6KBpb1hITJSF1gN173qw4GF98U.jpg';
+imgFooter.src = 'https://i.pinimg.com/736x/c4/f5/28/c4f528279adda7688ca2562871293701--uncharted-drakes-fortune-texture-painting.jpg';
+imgTrail.src = 'https://ccrgeek.files.wordpress.com/2012/06/4-colors-of-glowing-balls-1.png';
+//'https://orig00.deviantart.net/9b3c/f/2009/193/f/2/blank_sprite_sheet_4_2_by_knightyamato.png';//
+//'EBRoboteditcrMatsuoKaito.png';
+
+class Entity {
+	constructor(width, height, x, y, img) {
+		this.width = width;
+		this.height = height;
+		this.position = new Position(x, y);
+		this.img = img;
+		entities.push(this);
+	}
+	paint(){
+		cc.drawImage(this.img, this.position.x, this.position.y);
+	}
+	destroy(){
+		entities.splice(entities.indexOf(this),1);
+	}
+	hasHitGround(){
+		var hasHitGround = (this.position.y+this.height>=map.getGroundAt(this.position.x)) || (this.position.y+this.height>=map.getGroundAt(this.position.x+this.width));
+		return hasHitGround;
+	}
+}
+class MovingEntity extends Entity{
+	constructor(width, height, x, y, xv, yv, img) {
+		super(width, height, x, y, img);
+		this.xv = xv;
+		this.yv = yv;
+		movingEntities.push(this);
+	}
+	move(){
+		if(this.yv > 0) {
+			for(var i = 0;i < this.yv;i++){
+				this.position.y ++;
+				if(this.hasHitGround()){
+					this.position.y --;
+					break;
+				}
+			}
+		}
+		if(this.yv < 0) {
+			for(var i = 0;i > this.yv;i--){
+				this.position.y --;
+				if(this.hasHitGround()){
+					this.position.y ++;
+					break;
+				}
+			}
+		}
+		if(this.xv > 0) {
+		//Monter : Si getGroundAt(this.position.x + this.xv)
+			for(var i = 0;i < this.xv;i++){
+				this.position.x ++;
+				if(this.hasHitGround()){
+					this.position.x --;
+					break;
+				}
+			}
+		}
+		if(this.xv < 0) {
+			for(var i = 0;i > this.xv;i--){
+				this.position.x --;
+				if(this.hasHitGround()){
+					this.position.x ++;
+					break;
+				}
+			}
+		}/*
+		var nextX = this.position.x + this.xv;
+		var nextY = this.position.y + this.yv;
+		
+		var entityTest = new Entity(this.width, this.height, nextX, nextY, this.img);
+		if(entityTest.hasHitGround()){
+			entityTest.position.x = this.position.x;
+			entityTest.position.y = this.position.y;
+			while(!entityTest.hasHitGround()){
+				entityTest.position.x+=Math.sign(this.xv);
+				entityTest.position.y+=Math.sign(this.yv);
+			}
+		}
+		nextX = entityTest.position.x;
+		nextY = entityTest.position.y;
+		entityTest.destroy();
+		/*if(this.hasHitGround()){
+			nextY = this.position.y;
+		}*/
+		/*
+		if(entityTest.hasHitGround()){
+			//Descend
+			if((this.position.y + this.height) - nextGround <= 0) {
+				nextX = this.position.x + this.xv;
+				if(this.yv > 0) {
+					for(var i = 0;i < this.yv;i++){
+						nextY ++;
+						if(this.hasHitGround()){
+							nextY --;
+							break;
+						}
+					}
+				}
+			} else {
+				nextY = map.getGroundAt(this.position.x)-this.height;
+			}
+		}
+		
+		//Monte un peu
+		else if((this.position.y + this.height) - nextGround < 50){
+			nextX = this.position.x + this.xv;
+			nextY = nextGround-this.height;
+			if(this.hasHitGround()){
+				nextY = map.getGroundAt(this.position.x)-this.height;
+			}
+		} else {//Monte trop
+			var nextX = this.position.x;
+		}*/
+		this.position.x = nextX;
+		this.position.y = nextY;		
+	}
+	destroy(){
+		movingEntities.splice(movingEntities.indexOf(this),1);
+		super.destroy();
+	}
+	isLiving(){
+		/*if (this.isCollidingWith(mouseEntity)){
+			return false;
+		}*/
+		if (this.collidingOthers()){
+			return false;
+		}
+		return true;
+	}
+	isCollidingWith(other){
+		return areColliding(this, other);
+	}
+	collidingOthers(){
+		if(movingEntities.length>0){
+			for(var i = 0; i < movingEntities.length ; i++) {
+				var otherMovingEntity = movingEntities[i];
+				if (otherMovingEntity != this && this.isCollidingWith(otherMovingEntity)) {
+					otherMovingEntity.destroy();
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+class Footer extends Entity {
+  constructor(width, height) {
+	super(width, height, 0, c.height-height, imgFooter);
+  }
+  paint(){
+	var pttrn = cc.createPattern(imgFooter, 'repeat');
+	cc.fillStyle = pttrn;
+    cc.fillRect(0, c.height-this.height, this.width, this.height); 
+  }
+}
+class Hero extends MovingEntity {
+  constructor() {
+	super(128, 128, 0, 0, 0, 20, imgHero);
+	this.animations = [];
+	this.currentAnimation = Math.floor(Math.random()*6);
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 0, 16, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 16, 32, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 48, 16, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 64, 16, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 80, 16, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 96, 32, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 128, 32, 1));
+	this.setCurrentAnimation(this.currentAnimation);
+	this.jump = { impulsion:-20, height: 0,active:false };
+	//this.trail = new Trail(this);
+  }
+	animate(){
+		//this.trail.update();
+	}
+	move(){
+		this.xv = 0;
+		this.yv = 0;
+		//if !onground
+			//jump
+		if(!this.onGround()){
+		var i = 0;
+			for(i; i < GRAVITY || this.onGround(); i++);
+			this.yv += i;
+		} else {
+			this.jump.height = 0;
+			this.jump.active = false;
+		}
+		//alert(this.jump.height);
+		if(input.isPressed["d"]){
+			this.xv = 20;
+		}
+		if(input.isPressed["q"]){
+			this.xv = -20;
+		}
+		if(input.isPressed[" "]){
+			if(this.onGround()){
+				this.jump.active = true;
+				this.jump.height = this.jump.impulsion;
+			}
+		}
+		if(this.jump.active){
+			//if(this.jump.height<0){
+				this.jump.height+=2;
+			//}
+			this.yv = this.jump.height;		
+		}
+		super.move();
+		this.animate();
+	}
+	paint(){
+		//cc.fillRect(camera.relative(new Position(hero.position.x, hero.position.y)).x, camera.relative(new Position(hero.position.x, hero.position.y)).y, this.width, this.height); 
+		this.animations[this.currentAnimation].paint(camera.relative(new Position(hero.position.x, hero.position.y)).x, camera.relative(new Position(hero.position.x, hero.position.y)).y);
+	}
+	changingState(){
+		/*this.trail.paint();*/
+	}
+	destroy(){
+		this.animations.forEach(function(Entity) {
+			Entity.destroy();
+		});
+		super.destroy();
+	}
+	setCurrentAnimation(iAnimation){
+		this.currentAnimation = iAnimation;
+		this.animations.forEach(function(animation) {
+			animation.pause();
+		});	
+		this.animations[iAnimation].unpause();
+	}
+	onGround(){
+		var isOnGround = false;
+		this.position.y += 1;
+		if(this.hasHitGround()) {
+			isOnGround = true;
+		}
+		this.position.y -= 1;
+		return isOnGround;
+	}
+}
+class Position {
+	constructor(x, y) {
+		this.x = x;
+		this.y = y;
+	}
+}
+class Vector {
+  constructor(xv, yv) {
+	this.xv = xv;
+	this.yv = yv;
+  }
+}
+
+window.onload=function(){	
+	footer = new Footer(c.width, c.height*0.10);
+	mouseEntity = new Entity(10, 10, 0, 0);
+	//hero = new Hero(Math.floor((Math.random() * c.width) + 1));
+	hero = new Hero(0);
+	input = new Input(["q", "d", " ", "Control"]);
+	camera = new Camera(c.width, c.height, new Position(0, 0), hero, 250);
+	setInterval(update,1000/30);
+	//setInterval(spawnHero,1000/3);	
+	map = new Map(new Ground('x/3+50*Math.cos(x/100)+500', 0, 800));
+	window.requestAnimationFrame(paint);
+	/*c.addEventListener('mousemove', function(e){
+		if(e.clientX)
+	});*/
+}
+function update(){
+	moveEntities();
+	// camera.center();
+	
+	console.log(movingEntities);
+	console.log(entities);
+	//paint();
+}
+function paint(){
+	paintBackground('lightblue');
+	map.paint();
+	//paintEntities();
+	paintMovingEntities();
+	footer.paint();
+	debug();
+	//cc.fillText("x:"+camera.position.x+"|y:"+camera.position.y,10,50);
+	window.requestAnimationFrame(paint);
+}
+function debug(){
+		cc.font = "30px Arial";
+		cc.fillStyle = "black";
+		cc.fillText("camera.position.x:"+camera.position.x,10,40);
+		cc.fillText("camera.position.y:"+camera.position.y,10,80);
+		cc.fillText("hero.position.x:"+hero.position.x,10,120);
+		cc.fillText("hero.position.y:"+hero.position.y,10,160);
+		cc.fillText("hero.distance.ground:"+(map.getGroundAt(hero.position.x)-(hero.position.y+hero.height)),10,200);
+		cc.fillText("hero.onGround:"+(hero.onGround()?"true":"false"),10,240);
+}
+class Camera{
+	constructor(width, height, position, subject, padding){
+		this.position = position;
+		this.width = width;
+		this.height = height;
+		this.subject = subject;
+		this.padding = padding;
+	}
+	center() {
+		this.position = new Position(this.subject.position.x-this.padding, this.subject.position.y-this.padding);
+	}
+	relative(position){
+		this.center();
+		return new Position(position.x-this.position.x, position.y-this.position.y);
+	}
+}
+function paintEntities(){
+	entities.forEach(function(entity) {
+		entity.paint();
+	});
+}
+function paintMovingEntities(){
+	movingEntities.forEach(function(movingEntity) {
+		movingEntity.paint();
+	});
+}
+function moveEntities() {
+	movingEntities.forEach(function(movingEntity) {
+		movingEntity.move();
+		if(!movingEntity.isLiving()){
+			movingEntity.destroy();
+	}
+	});
+}
+function paintBackground(color){
+	cc.fillStyle=color;
+	cc.fillRect(0, 0, c.width, c.height);
+	//cc.drawImage(imgBackground, 0, 0);
+	/*var pttrn = cc.createPattern(imgBackground, 'repeat');
+	cc.fillStyle = pttrn;
+    cc.fillRect(0, 0, c.width, c.height); */
+}
+document.addEventListener("click", alertDebug);
+document.addEventListener("mousemove", updateMouse);
+function updateMouse(){
+	mouseEntity.position.x = event.clientX;
+	mouseEntity.position.y = event.clientY;
+}
+function alertDebug(){
+	mouseEntity.position.x = event.clientX;
+	mouseEntity.position.y = event.clientY;
+}
+function areColliding(a, b) {
+	return !(a.position.x+a.width<b.position.x || a.position.x>=b.position.x+b.width || a.position.y+a.height<b.position.y || a.position.y>=b.position.y+b.height);
+}
+//TODO : centercamera mouse
+class Animation extends Entity{
+	constructor(entity, width, height, x, y, img, nbColumns, nbLines, firstSprite, nbSprites, duration) {
+		super(width, height, x, y, img);
+		//this.entity = entity;
+		this.nbColumns = nbColumns;
+		this.nbLines = nbLines;
+		this.firstSprite = firstSprite;
+		this.nbSprites = nbSprites;
+		this.duration = duration;
+		this.currentSprite = firstSprite;
+		this.onPause = false;
+		this.onStop = false;
+		var that = this;
+		this.timer = setInterval(function () {
+			that.play();
+			/*if (!that.onPause)
+				alert(that.currentSprite);*/
+		}, that.duration/nbSprites*1000);
+	}
+	pause(){
+		this.onPause = true;
+	}
+	unpause() {
+		this.onPause = false;
+	}
+	paint(x, y){
+		if (this.onPause){
+			return;
+		}
+		var iC = ((this.currentSprite)%this.nbColumns);
+		var iL = Math.floor(this.currentSprite/this.nbColumns);
+		var spriteW = this.width/this.nbColumns;
+		var spriteH = this.height/this.nbLines;
+		cc.drawImage(this.img, iC*spriteW, iL*spriteH, spriteW, spriteH, x, y, spriteW, spriteH);
+	}
+	play(){
+		if(!this.onPause){
+			this.currentSprite++;
+			if(this.currentSprite >= this.firstSprite+this.nbSprites) {
+				this.currentSprite = this.firstSprite;
+			}
+		}
+	}
+	destroy(){
+		clearTimeout(this.timer);
+		super.destroy();
+	}
+}
+class Ground{
+	constructor(slope, startingPosition, width) {
+		this.slope = slope;
+		this.startingPosition = startingPosition;
+		this.width = width;
+	}
+	getGroundAt(x) {
+		return eval(this.slope);
+	}
+	getSlopeAt(x) {
+		alert(math.eval(this.slope));
+		return math.eval(this.slope);
+	}
+	paint(){
+		cc.beginPath();
+		/*camera.position.x = 0;
+		camera.position.y = 0;*/
+		cc.moveTo(0, c.height-footer.height);
+		var nextPoint;
+		for(var i = 0; i < c.width ; i++) {
+			//alert(camera.position.x+i + " " + this.getGroundAt(camera.position.x+i));
+			camera.center();
+			nextPoint = camera.relative(new Position(camera.position.x+i, this.getGroundAt(camera.position.x+i)));
+			//alert(nextPoint.x + " " + nextPoint.y);
+			cc.lineTo(nextPoint.x, nextPoint.y);
+			if((nextPoint.x+camera.position.x)%200==0){
+				cc.lineTo(nextPoint.x, nextPoint.y+20);
+			}
+		}//TODO
+		//alert(y);
+		cc.lineTo(c.width, c.height-footer.height);
+		cc.lineTo(0, c.height-footer.height);
+		cc.fillStyle = "green";
+		cc.fill();
+		cc.stroke();
+	}
+}
+class Map {
+	constructor(ground){
+		this.grounds = [];
+		this.grounds.push(ground);
+		this.nextGroundX = ground.width;
+		this.currentGround = 0;
+	}
+	addGround(ground){
+		previousGround = this.grounds[this.grounds.length()-1];
+		ground.startingPosition.y = previousGround.getGroundAt(previousGround.startingPosition.x+previousGround.width);
+		this.grounds.push(ground);
+	}
+	updateGround(){
+		if(camera.x >= this.nextGroundX) return;
+	}
+	paint(){
+		this.grounds[this.currentGround].paint();
+	}
+	getSlopeAt(x){
+		return this.grounds[this.currentGround].getSlopeAt(x);
+	}
+	getGroundAt(x){
+		/*var slopeAt =;
+		for(int i=0;i<=this.grounds.length;i++){
+			groundTemp = this.grounds[i];
+			if(groundTemp.startingPosition)
+		}
+		if(x>=this.nextGroundX){
+			slopeAt =this.grounds[this.currentGround].getGroundAt(x)
+		}
+		return slopeAt;*///TODO
+		return (Math.floor(this.grounds[this.currentGround].getGroundAt(x)));
+	}
+}
+class Trail{
+	constructor(owner){
+		this.owner = owner;
+		this.trail = [];
+	}
+	destroy(){
+		this.trail.forEach(function(Entity) {
+			Entity.destroy();
+		});
+	}
+	update(){
+		var tempTrail = new Animation(this, 384, 256, this.owner.position.x, this.owner.position.y, imgTrail, 12, 8, 4, 3, 0.5);
+		this.trail.push(tempTrail);
+		if(this.trail.length>7){
+			this.trail.shift().destroy();
+		}
+	}
+	paint(){
+		for(var i = 0; i < this.trail.length ; i++) {
+			this.trail[i].paint(this.trail[i].position.x, this.trail[i].position.y);
+		}
+	}
+}
+/*TODO : 
+-Changement de pente
+-Contrôles
+-Remplacer foreach par for
+*/
+class Input {
+	constructor(possibleInputs){
+		this.possibleInputs = possibleInputs;
+		this.isPressed = [];
+		this.isPressed["a"] = false;
+		this.possibleInputs.forEach(function(input) {
+			var test = input;
+			this.isPressed[input] = false;
+			document.addEventListener('keydown', (event) => {
+				const keyName = event.key;
+				if(keyName == input){
+					this.isPressed[input] = true;
+				}
+			});
+			document.addEventListener('keyup', (event) => {
+				const keyName = event.key;
+				if(keyName == input){
+					this.isPressed[input] = false;
+				}
+			});
+		}, this);
+	}	
+}
+</script>

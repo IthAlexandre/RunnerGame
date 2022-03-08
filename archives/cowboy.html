@@ -1,0 +1,358 @@
+<canvas id="game" width="1080" height="650"></canvas>
+<!--<canvas id="game" width="640" height="480"></div></canvas>-->
+<script src="https://unpkg.com/mathjs@4.0.0/dist/math.min.js"></script>
+<script>
+c=document.getElementById('game');
+cc=c.getContext('2d');
+var footer;
+var hero;
+var entities = [];
+var movingEntities = [];
+var mouseEntity;
+var colors = ["yellow","blue","red","green","cyan","magenta"];
+var imgHero = new Image();
+var imgTrail = new Image();
+var imgBackground = new Image();
+var imgFooter = new Image();
+var camera;
+var input;
+imgHero.src = 'cowboy.png';
+imgBackground.src = 'https://t4.ftcdn.net/jpg/01/79/07/77/240_F_179077796_P6UNHX6KBpb1hITJSF1gN173qw4GF98U.jpg';
+imgFooter.src = 'https://i.pinimg.com/736x/c4/f5/28/c4f528279adda7688ca2562871293701--uncharted-drakes-fortune-texture-painting.jpg';
+imgTrail.src = 'https://ccrgeek.files.wordpress.com/2012/06/4-colors-of-glowing-balls-1.png';
+//'https://orig00.deviantart.net/9b3c/f/2009/193/f/2/blank_sprite_sheet_4_2_by_knightyamato.png';//
+//'EBRoboteditcrMatsuoKaito.png';
+
+class Entity {
+	constructor(width, height, x, y, img) {
+		this.width = width;
+		this.height = height;
+		this.position = new Position(x, y);
+		this.img = img;
+		entities.push(this);
+	}
+	paint(){
+		cc.drawImage(this.img, this.position.x, this.position.y);
+	}
+	destroy(){
+		entities.splice(entities.indexOf(this),1);
+	}
+}
+class MovingEntity extends Entity{
+	constructor(width, height, x, y, xv, yv, img) {
+		super(width, height, x, y, img);
+		this.xv = xv;
+		this.yv = yv;
+		movingEntities.push(this);
+	}
+	move(){	
+	}
+	destroy(){
+		movingEntities.splice(movingEntities.indexOf(this),1);
+		super.destroy();
+	}
+	isLiving(){
+		/*if (this.isCollidingWith(mouseEntity)){
+			return false;
+		}*/
+		if (this.collidingOthers()){
+			return false;
+		}
+		return true;
+	}
+	isCollidingWith(other){
+		return areColliding(this, other);
+	}
+	collidingOthers(){
+		if(movingEntities.length>0){
+			for(var i = 0; i < movingEntities.length ; i++) {
+				var otherMovingEntity = movingEntities[i];
+				if (otherMovingEntity != this && this.isCollidingWith(otherMovingEntity)) {
+					otherMovingEntity.destroy();
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+class Footer extends Entity {
+  constructor(width, height) {
+	super(width, height, 0, c.height-height, imgFooter);
+  }
+  paint(){
+	var pttrn = cc.createPattern(imgFooter, 'repeat');
+	cc.fillStyle = pttrn;
+    cc.fillRect(0, c.height-this.height, this.width, this.height); 
+  }
+}
+class Hero extends MovingEntity {
+  constructor() {
+	super(128, 128, 0, 0, 0, 20, imgHero);
+	this.animations = [];
+	this.currentAnimation = Math.floor(Math.random()*6);
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 0, 16, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 16, 32, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 48, 16, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 64, 16, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 80, 16, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 96, 32, 1));
+	this.animations.push(new Animation(this, 2048, 2048, this.position.x, this.position.y, imgHero, 16, 16, 128, 32, 1));
+	this.setCurrentAnimation(this.currentAnimation);
+	this.jump = { impulsion:-50, height: 0,isJumping:false };
+	//this.trail = new Trail(this);
+  }
+	animate(){
+		//this.trail.update();
+	}
+	move(){
+		this.xv = 0;
+		this.yv = 0;
+		if(input.isPressed["d"]){
+			this.xv = 20;
+		}
+		if(input.isPressed["s"]){
+			this.yv = 20;
+		}
+		if(input.isPressed["q"]){
+			this.xv = -20;
+		}
+		if(input.isPressed["z"]){
+			this.yv = -20;
+		}
+		if(input.isPressed[" "]){
+		}
+		this.position.x += this.xv;
+		this.position.y += this.yv;
+		super.move();
+		this.animate();
+	}
+	paint(){
+		this.animations[this.currentAnimation].paint(camera.relative(new Position(hero.position.x, hero.position.y)).x, camera.relative(new Position(hero.position.x, hero.position.y)).y);
+	}
+	changingState(){
+		/*this.trail.paint();*/
+	}
+	destroy(){
+		this.animations.forEach(function(Entity) {
+			Entity.destroy();
+		});
+		super.destroy();
+	}
+	setCurrentAnimation(iAnimation){
+		this.currentAnimation = iAnimation;
+		this.animations.forEach(function(animation) {
+			animation.pause();
+		});	
+		this.animations[iAnimation].unpause();
+	}
+}
+class Position {
+	constructor(x, y) {
+		this.x = x;
+		this.y = y;
+	}
+}
+
+window.onload=function(){	
+	footer = new Footer(c.width, c.height*0.10);
+	mouseEntity = new Entity(10, 10, 0, 0);
+	//hero = new Hero(Math.floor((Math.random() * c.width) + 1));
+	hero = new Hero(0);
+	input = new Input(["q", "s", "d", "z", "Control"]);
+	camera = new Camera(c.width, c.height, new Position(0, 0), hero, 150);
+	setInterval(update,1000/30);
+	//setInterval(spawnHero,1000/3);	
+	map = new Map();//
+	window.requestAnimationFrame(paint);
+}
+ 
+function update(){
+	moveEntities();
+	camera.center();
+	
+	console.log(movingEntities);
+	console.log(entities);
+	//paint();
+}
+function paint(){
+	map.paint();
+	//paintEntities();
+	paintMovingEntities();
+	footer.paint();
+	debug();
+	//cc.fillText("x:"+camera.position.x+"|y:"+camera.position.y,10,50);
+	window.requestAnimationFrame(paint);
+}
+function debug(){
+	if(input.isPressed["Control"]){
+		cc.font = "30px Arial";
+		cc.fillStyle = "black";
+		cc.fillText("camera.position.x:"+camera.position.x,10,40);
+		cc.fillText("camera.position.y:"+camera.position.y,10,80);
+		cc.fillText("hero.position.x:"+hero.position.x,10,120);
+		cc.fillText("hero.position.y:"+hero.position.y,10,160);
+	}
+}
+class Camera{
+	constructor(width, height, position, subject, padding){
+		this.position = position;
+		this.width = width;
+		this.height = height;
+		this.subject = subject;
+		this.padding = padding;
+	}
+	center() {
+		this.position = new Position(this.subject.position.x-this.padding, this.subject.position.y-this.padding);
+	}
+	relative(position){
+		this.center();
+		return new Position(position.x-this.position.x, position.y-this.position.y);
+	}
+}
+function paintEntities(){
+	entities.forEach(function(entity) {
+		entity.paint();
+	});
+}
+function paintMovingEntities(){
+	movingEntities.forEach(function(movingEntity) {
+		movingEntity.paint();
+	});
+}
+function moveEntities() {
+	movingEntities.forEach(function(movingEntity) {
+		movingEntity.move();
+		if(!movingEntity.isLiving()){
+			movingEntity.destroy();
+	}
+	});
+}
+document.addEventListener("click", alertDebug);
+document.addEventListener("mousemove", updateMouse);
+function updateMouse(){
+	mouseEntity.position.x = event.clientX;
+	mouseEntity.position.y = event.clientY;
+}
+function alertDebug(){
+	mouseEntity.position.x = event.clientX;
+	mouseEntity.position.y = event.clientY;
+}
+function areColliding(a, b) {
+	return !(a.position.x+a.width<b.position.x || a.position.x>=b.position.x+b.width || a.position.y+a.height<b.position.y || a.position.y>=b.position.y+b.height);
+}
+//TODO : centercamera mouse
+class Animation extends Entity{
+	constructor(entity, width, height, x, y, img, nbColumns, nbLines, firstSprite, nbSprites, duration) {
+		super(width, height, x, y, img);
+		//this.entity = entity;
+		this.nbColumns = nbColumns;
+		this.nbLines = nbLines;
+		this.firstSprite = firstSprite;
+		this.nbSprites = nbSprites;
+		this.duration = duration;
+		this.currentSprite = firstSprite;
+		this.onPause = false;
+		this.onStop = false;
+		var that = this;
+		this.timer = setInterval(function () {
+			that.play();
+			/*if (!that.onPause)
+				alert(that.currentSprite);*/
+		}, that.duration/nbSprites*1000);
+	}
+	pause(){
+		this.onPause = true;
+	}
+	unpause() {
+		this.onPause = false;
+	}
+	paint(x, y){
+		if (this.onPause){
+			return;
+		}
+		var iC = ((this.currentSprite)%this.nbColumns);
+		var iL = Math.floor(this.currentSprite/this.nbColumns);
+		var spriteW = this.width/this.nbColumns;
+		var spriteH = this.height/this.nbLines;
+		cc.drawImage(this.img, iC*spriteW, iL*spriteH, spriteW, spriteH, x, y, spriteW, spriteH);
+	}
+	play(){
+		if(!this.onPause){
+			this.currentSprite++;
+			if(this.currentSprite >= this.firstSprite+this.nbSprites) {
+				this.currentSprite = this.firstSprite;
+			}
+		}
+	}
+	destroy(){
+		clearTimeout(this.timer);
+		super.destroy();
+	}
+}
+class Map {
+	constructor(){
+	}
+	paint(){
+		cc.fillStyle = "Black";
+		cc.fillRect(0, 0, c.width, c.height); 
+		
+		var firstPoint = camera.relative(new Position(0, 0));
+		var lastPoint = camera.relative(new Position(c.width, c.height));
+		var pttrn = cc.createPattern(imgFooter, 'repeat');
+		cc.fillStyle = pttrn;
+		cc.fillRect(firstPoint.x, firstPoint.y, lastPoint.x, lastPoint.y); 
+	}
+}
+class Trail{
+	constructor(owner){
+		this.owner = owner;
+		this.trail = [];
+	}
+	destroy(){
+		this.trail.forEach(function(Entity) {
+			Entity.destroy();
+		});
+	}
+	update(){
+		var tempTrail = new Animation(this, 384, 256, this.owner.position.x, this.owner.position.y, imgTrail, 12, 8, 4, 3, 0.5);
+		this.trail.push(tempTrail);
+		if(this.trail.length>7){
+			this.trail.shift().destroy();
+		}
+	}
+	paint(){
+		for(var i = 0; i < this.trail.length ; i++) {
+			this.trail[i].paint(this.trail[i].position.x, this.trail[i].position.y);
+		}
+	}
+}
+/*TODO : 
+-Changement de pente
+-Contrôles
+-Remplacer foreach par for
+*/
+class Input {
+	constructor(possibleInputs){
+		this.possibleInputs = possibleInputs;
+		this.isPressed = [];
+			this.isPressed["a"] = false;
+		this.possibleInputs.forEach(function(input) {
+			var test = input;
+			this.isPressed[input] = false;
+			document.addEventListener('keydown', (event) => {
+				const keyName = event.key;
+				if(keyName == input){
+					this.isPressed[input] = true;
+				}
+			});
+			document.addEventListener('keyup', (event) => {
+				const keyName = event.key;
+				if(keyName == input){
+					this.isPressed[input] = false;
+				}
+			});
+		}, this);
+	}	
+}
+</script>

@@ -1,0 +1,621 @@
+<canvas id="game" width="1080" height="650"></canvas>
+<!--<canvas id="game" width="640" height="480"></div></canvas>-->
+<script src="https://unpkg.com/mathjs@4.0.0/dist/math.min.js"></script>
+<script>
+c=document.getElementById('game');
+cc=c.getContext('2d');
+var MAP_WIDTH = c.width;
+var MAP_HEIGHT = c.height;
+var GAME_PAUSED = false;
+
+var game;
+
+var imgHero = new Image();
+var imgFooter = new Image();
+imgHero.src = 'EBRoboteditcrMatsuoKaito.png';
+imgFooter.src = 'https://i.pinimg.com/736x/c4/f5/28/c4f528279adda7688ca2562871293701--uncharted-drakes-fortune-texture-painting.jpg';
+
+window.onload=function(){
+	game = new Game();
+	game.init();
+	//hero = new Hero(Math.floor((Math.random() * c.width) + 1));
+	//setInterval(spawnHero,1000/3);
+	window.requestAnimationFrame(game.paint);
+	/*c.addEventListener('mousemove', function(e){
+		if(e.clientX)
+	});*/
+}
+
+class Game {
+	constructor(){
+		this.footer;
+		this.movingEntities;
+		this.entities;
+		this.hero;
+		this.camera;
+		this.input;
+		this.mouseEntity;
+		this.map;
+		this.highestPathAttained = 0;
+		this.score = 0;
+		this.updater;
+	}
+	init(){
+		this.movingEntities = [];
+		this.entities = [];
+		this.hero = new Hero(46, 46, c.width/2, 0, imgHero, 10, -90);
+		this.footer = new Footer(c.width, c.height*0.10);
+		this.camera = new Camera(c.width, c.height, new Position(0, 0), game.hero, c.width/2, c.height/2);
+		this.input = new Input(["q", "d", " ", "r"]);
+		this.mouseEntity = new Entity(10, 10, 0, 0);
+		this.map = new Map(MAP_WIDTH, MAP_HEIGHT, 50, 50, null);
+		this.updater = setInterval(this.update,1000/30);
+		this.textBuffers = [];
+
+	}
+	initGame(){
+		this.hero = new Hero(46, 46, c.width/2, 0, imgHero, 10, -90);
+		game.camera.setSubject(this.hero);
+	}
+	getCurrentHeroPath(){
+		return this.map.getPathFor(this.hero.position.y);
+	}
+	update(){
+		if(game.hero.hitPoints > 0){
+			if(game.input.isPressed["q"]){
+				game.hero.rotate(10);
+			}
+			if(game.input.isPressed["d"]){
+				game.hero.rotate(-10);
+			}
+			if(game.input.isPressed[" "]){
+				togglePause();
+			}
+			if(game.input.isPressed["r"]){
+				this.initGame();
+			}
+			if(game.input.isPressed["clickLeft"] && areColliding(game.mouseEntity, game.footer.leftPart)){
+				game.hero.rotate(10);
+			}
+			if(game.input.isPressed["clickLeft"] && areColliding(game.mouseEntity, game.footer.rightPart)){
+				game.hero.rotate(-10);
+			}
+			if(GAME_PAUSED) return;
+			/*Déclenchement du chargement du prochain path*/
+			if(game.getCurrentHeroPath() >= game.highestPathAttained){
+				game.highestPathAttained = game.getCurrentHeroPath()+1;
+				game.map.loadNextPath();
+				game.hero.speed++;
+			}
+
+			game.moveEntities();
+			game.camera.center();
+
+			if(game.map.isInPath(game.hero)){
+				game.score++
+			} else {
+				game.hero.hitPoints--;
+			}
+		} else {
+			game.losing();
+		}
+		//console.log(movingEntities);
+		//console.log(entities);
+		//paint();
+	}
+	losing(){
+		this.camera.center();
+		this.hero.rotate(-10);
+	}
+	togglePause(){
+		GAME_PAUSED = !GAME_PAUSED;
+	}
+	paint(){
+		game.map.paint();
+		//paintEntities();
+		//game.hero.paint();
+		// hero.rotate(1);
+		game.paintMovingEntities();
+		game.footer.paint();
+
+		game.paintTexts();
+		// game.debug();
+		window.requestAnimationFrame(game.paint);
+	}
+	paintTexts(){
+		this.textBuffers.forEach(function(text){
+			text.paint();
+		});
+		this.textBuffers = [];
+	}
+	debug(){
+		cc.font = "30px Arial";
+		cc.fillStyle = "black";
+		this.textBuffers.push(new TextOutput(10, 30, "mouseEntity.position.x:"+this.mouseEntity.position.x));
+		this.textBuffers.push(new TextOutput(10, 60, "mouseEntity.position.y:"+this.mouseEntity.position.y));
+		this.textBuffers.push(new TextOutput(10, 90, "isInPath:"+this.map.isInPath(this.hero)));
+		this.textBuffers.push(new TextOutput(10, 120, "getPathForHero:"+this.getCurrentHeroPath()));
+		this.textBuffers.push(new TextOutput(10, 150, "camera.position.x:"+Math.round(this.camera.position.x)+"|camera.position.y:"+Math.round(this.camera.position.y)));
+		this.textBuffers.push(new TextOutput(10, 180, "mouseEntity.position.x:"+this.mouseEntity.position.x));
+		this.textBuffers.push(new TextOutput(10, 210, "camera.subject.position.x:"+Math.round(this.camera.subject.position.x)+"|camera.subject.position.y:"+Math.round(this.camera.subject.position.y)));
+		this.textBuffers.push(new TextOutput(10, 240, "hero.position.x:"+Math.round(this.hero.position.x)+"|hero.position.y:"+Math.round(this.hero.position.y)));
+	}
+	paintEntities(){
+		this.entities.forEach(function(entity) {
+			entity.paint();
+		});
+	}
+	paintMovingEntities(){
+		this.movingEntities.forEach(function(movingEntity) {
+			movingEntity.paint();
+		});
+	}
+	moveEntities() {
+		this.movingEntities.forEach(function(movingEntity) {
+			movingEntity.move();
+			if(!movingEntity.isLiving()){
+				movingEntity.destroy();
+		}
+		});
+	}
+}
+
+class Output{
+	constructor(x, y){
+		this.position = new Position(x, y);
+	}
+}
+
+class TextOutput extends Output{
+	constructor(x, y, text, font, fillStyle){
+		super(x, y);
+		this.text = text;
+		this.font = font;
+		this.fillStyle = fillStyle;
+	}
+	paint(){
+		cc.font = this.font ? this.font : "35px Arial";
+		cc.fillStyle = this.fillStyle ? this.fillStyle : "black";
+		cc.fillText(this.text,this.position.x,this.position.y);
+	}
+}
+
+function rotateTangent(x, y, deltaDegrees){
+	//delta *= Math.PI/180;
+  var deltaArc = Math.atan(deltaDegrees);
+	var matrix = math.matrix([[Math.cos(deltaArc), Math.sin(deltaArc)], [-Math.sin(deltaArc), Math.cos(deltaArc)]]);
+	return math.multiply(matrix, math.matrix([[x], [y]]));
+}
+
+function rotateDegrees(x, y, deltaDegrees){
+	//delta
+  var deltaArc = deltaDegrees * Math.PI/180;
+	var matrix = math.matrix([[Math.cos(deltaArc), Math.sin(deltaArc)], [-Math.sin(deltaArc), Math.cos(deltaArc)]]);
+	return math.multiply(matrix, math.matrix([[x], [y]]));
+}
+
+function getRandomInt(max) {
+  return Math.floor(Math.random() * Math.floor(max));
+}
+
+class Map {
+	constructor(width, height, wTile, hTile, arr = null){
+		this.width = width;
+		this.height = height;
+		this.pathes = [];
+		this.curvePoints = [];
+		this.borderLeft = [];
+		this.borderRight = [];
+		this.loadNextPath();
+		console.log(this);
+	}
+	generateSlope(){
+		var amplitude = 200 + getRandomInt(300);
+		var turn = 50 + getRandomInt(100);
+		return 'Math.sin(x*1/' + turn.toString() + ')*' + amplitude.toString() + '';
+	}
+	loadNextPath(){
+		var lastEndingPosition;
+		if(!this.pathes[this.pathes.length-1])
+			lastEndingPosition = new Position(c.width/2, 0);
+		else
+			lastEndingPosition= this.pathes[this.pathes.length-1].endingPosition;
+		this.pathes.push(new Path(this.generateSlope(), lastEndingPosition, 1000));
+	}
+	load(dFile){
+//TODO
+	}
+	saveMap(sFile){
+//TODO
+	}
+	getSlopeAt(y){
+		var selectedPath = this.getPathFor(y);
+		if(!this.pathes[selectedPath] || !this.pathes[selectedPath].curvePoints[Math.round(y)]) return false;
+		return this.pathes[selectedPath].curvePoints[Math.round(y)].x;
+	}
+	//TODO ; collision chelou , getPathFor() chelou
+	getPathFor(y){
+		var selectedPath = 0;
+		this.pathes.some(function(path){
+			if(y > path.startingPosition.y + path.size){
+				selectedPath++;
+			}
+		});
+		return selectedPath;
+	}
+	paint()
+	{
+		cc.clearRect(0, 0, c.width, c.height);
+		var i = 0;
+		this.pathes.forEach(function(path){
+			if(game.getCurrentHeroPath() >= i - 1 && game.getCurrentHeroPath() <= i + 1)
+				path.paint();
+			i++;
+		});
+	}
+	isInPath(entity){
+		var isInPath = false;
+		var startPath = entity.position.y-entity.collidingRadius;
+		var endPath = entity.position.y + entity.height+entity.collidingRadius;
+		for(var i = startPath ; i <= endPath ; i+=5){
+			if(collisionEntity(this.getSlopeAt(i), i, entity))
+				return true;
+		}
+		return isInPath;
+	}
+}
+
+class Path {
+	constructor(slope, startingPosition, size){
+		//this.slope = 'Math.sin(x*0.02)*200+x/3';
+		this.slope = slope;
+		this.startingPosition = startingPosition;
+		this.endingPosition = new Position(0, 0);
+		this.size = size;
+		this.borderWidth = 150;
+		this.updater;
+		this.init();
+		// this.slope = 'Math.sin(x*0.04)*50+x/3';
+		// this.slope = 'x*x/600';
+	}
+	getSlopeAt(x){
+		return eval(this.slope);
+	}
+	loadAsynch(){
+		var nextPoint;
+		for(var i = this.startingPosition.y; i <= this.startingPosition.y + this.size ; i++) {
+			nextPoint = new Position(-this.getSlopeAt(this.startingPosition.y)+this.getSlopeAt(this.startingPosition.y + this.size)+this.startingPosition.x, this.startingPosition.y + this.size);
+			game.map.curvePoints[i] = nextPoint;
+
+			var derivate = math.derivative(this.slope, 'x');
+			var x = i;
+			var derivateInX = eval(derivate.toString().replace('sin', 'Math.sin').replace('cos', 'Math.cos'));
+
+			var matrix = rotateTangent(this.borderWidth/2, 0, derivateInX);
+			game.map.borderRight[i] = new Position(matrix.get([0, 0])+nextPoint.x, matrix.get([1, 0])+nextPoint.y);
+
+			var matrix2 = rotateTangent(-this.borderWidth/2, 0, derivateInX);
+			game.map.borderLeft[i] = new Position(matrix2.get([0, 0])+nextPoint.x, matrix2.get([1, 0])+nextPoint.y);
+		}
+		this.endingPosition = nextPoint;
+		clearInterval(this.updater);
+	}
+	load(){
+		this.updater = setInterval(this.loadAsynch.bind(this),1000/30);
+	}
+	init(){
+		this.load();
+	}
+	paint(){
+		var currentX = Math.round(game.camera.position.y);
+		var i;
+
+		cc.beginPath();
+		cc.strokeStyle = "black";
+		cc.moveTo(0, this.startingPosition.y-game.camera.position.y);
+		cc.lineTo(c.width, this.startingPosition.y-game.camera.position.y);
+		cc.stroke();
+
+		/*hero...*/
+		cc.beginPath();
+		if(game.map.isInPath(game.hero)){
+			cc.strokeStyle = "green";
+		} else {
+			cc.strokeStyle = "red";
+		}
+		/**/
+		cc.lineWidth = 10;
+		if(this.curvePoints[currentX])
+			cc.moveTo(this.curvePoints[Math.round(game.camera.position.y)].x-game.camera.position.x, this.curvePoints[Math.round(game.camera.position.y)].y-game.camera.position.y);
+		for(i = 0; i < c.height ; i++){
+			if(this.borderRight[currentX+i])
+				cc.lineTo(this.curvePoints[currentX+i].x-game.camera.position.x, this.curvePoints[currentX+i].y-game.camera.position.y);
+		}
+		cc.stroke();
+
+		cc.beginPath();
+		var startingX = 0;
+		var startingY = 0;
+
+		cc.strokeStyle = "black";
+		var first = true;
+		for(i = 0; i < c.height ; i++){
+			if(this.borderRight[currentX+i]){
+				if(first){
+					first = false;
+					cc.moveTo(this.borderRight[currentX+i].x-game.camera.position.x, this.borderRight[currentX+i].y-game.camera.position.y);
+					startingX = this.borderRight[currentX+i].x-game.camera.position.x;
+					startingY = this.borderRight[currentX+i].y-game.camera.position.y;
+				} else {
+					cc.lineTo(this.borderRight[currentX+i].x-game.camera.position.x, this.borderRight[currentX+i].y-game.camera.position.y);
+				}
+			}
+		}
+		first = true;
+		for(i = c.height; i >= 0 ; i--){
+			if(this.borderLeft[currentX+i]){
+				cc.lineTo(this.borderLeft[currentX+i].x-game.camera.position.x, this.borderLeft[currentX+i].y-game.camera.position.y);
+			}
+		}
+		cc.lineTo(startingX, startingY);
+		cc.stroke();
+
+		var pttrn = cc.createPattern(imgFooter, 'repeat');
+		cc.fillStyle = pttrn;
+		cc.fill();
+
+				// cc.fillStyle = "black";
+	}
+}
+
+function collisionEntity(x, y, entity)
+{
+   var d2 = (x-entity.position.x)*(x-entity.position.x) + (y-entity.position.y)*(y-entity.position.y);
+   if (d2>entity.collidingRadius/2*entity.collidingRadius/2)
+      return false;
+   else
+      return true;
+}
+
+//'https://orig00.deviantart.net/9b3c/f/2009/193/f/2/blank_sprite_sheet_4_2_by_knightyamato.png';//
+//'EBRoboteditcrMatsuoKaito.png';
+class Entity {
+	constructor(width, height, x, y, img) {
+		this.width = width;
+		this.height = height;
+		this.position = new Position(x, y);
+		this.img = img;
+		game.entities.push(this);
+	}
+	paint(){
+	}
+	destroy(){
+		game.entities.splice(game.entities.indexOf(this),1);
+	}
+	clickedOn(){
+		alert("clicked "+this);
+	}
+}
+class MovingEntity extends Entity{
+	constructor(width, height, x, y, img, speed) {
+		super(width, height, x, y, img);
+		this.speed = speed;
+		this.collidingRadius = 200;
+		console.log(game);
+		game.movingEntities.push(this);
+	}
+	move(){
+	}
+	paint(){
+		super.paint();
+	}
+	destroy(){
+		game.movingEntities.splice(game.movingEntities.indexOf(this),1);
+		super.destroy();
+	}
+	isLiving(){
+		/*if (this.isCollidingWith(mouseEntity)){
+			return false;
+		}*/
+		/*if (this.collidingOthers()){
+			return false;
+		}*/
+		return true;
+	}
+	isCollidingWith(other){
+		return areColliding(this, other);
+	}
+	collidingOthers(){
+		if(game.movingEntities.length>0){
+			for(var i = 0; i < game.movingEntities.length ; i++) {
+				var otherMovingEntity = game.movingEntities[i];
+				if (otherMovingEntity != this && this.isCollidingWith(otherMovingEntity)) {
+					otherMovingEntity.destroy();
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+class Hero extends MovingEntity {
+  constructor(width, height, x, y, img, speed, direction) {
+		super(width, height, x, y, img, speed);
+		this.direction = direction;
+		this.hitPoints = 100;
+		console.log(this);
+	}
+	move(){
+		var matrix = rotateDegrees(this.speed, 0, this.direction);
+		this.position.x += matrix.get([0, 0]);
+		this.position.y += matrix.get([1, 0]);
+	}
+	rotate(rotation){
+		this.direction += rotation;
+	}
+	paint(){
+		// super.paint();
+		// cc.drawImage(this.img, 0, 0, this.width, this.height, , , this.width, this.height);
+
+		cc.save();
+		cc.translate(this.position.x-game.camera.position.x, this.position.y-game.camera.position.y);
+		cc.rotate(-(this.direction-90) * Math.PI/180);
+		cc.translate(-(this.width/2),-(this.width/2));
+		cc.drawImage(this.img, 0, 0, this.width, this.height, 0, 0, this.width, this.height);
+		// cc.beginPath();
+		// cc.arc(0+this.width/2, 0+this.height/2, 100, 0, 2 * Math.PI, false);
+		// cc.stroke();
+		cc.restore();
+	}
+	destroy(){
+		super.destroy();
+	}
+}
+class Footer extends Entity {
+  constructor(width, height) {
+		super(width, height, 0, c.height-height, imgFooter);
+		this.leftPart = new Entity(width/2, height, 0, c.height-height);
+		this.rightPart = new Entity(width/2, height, width/2, c.height-height);
+  }
+  paint(){
+		cc.font = "30px Arial";
+		var pttrn = cc.createPattern(imgFooter, 'repeat');
+		cc.fillStyle = pttrn;
+    cc.fillRect(0, this.position.y, this.width, this.height);
+		cc.fillStyle = "black";
+		game.textBuffers.push(new TextOutput(10, this.position.y+45, "SCORE:"+game.score));
+		game.textBuffers.push(new TextOutput(250, this.position.y+45, "PdV:"+game.hero.hitPoints));
+		game.textBuffers.push(new TextOutput(500, this.position.y+45, "Niveau:"+game.getCurrentHeroPath()));
+		game.textBuffers.push(new TextOutput(750, this.position.y+45, "PERDU TM"));
+  }
+}
+class Position {
+	constructor(x, y) {
+		// this.x = Math.round(x);
+		// this.y = Math.round(y);
+		this.x = x;
+		this.y = y;
+	}
+}
+class Vector {
+  constructor(xv, yv) {
+	this.xv = xv;
+	this.yv = yv;
+  }
+}
+class Camera{
+	constructor(width, height, position, subject, paddingX, paddingY){
+		this.position = position;
+		this.width = width;
+		this.height = height;
+		this.subject = subject;
+		this.paddingX = paddingX;
+		this.paddingY = paddingY;
+	}
+	center() {
+		this.position = new Position(this.subject.position.x-this.paddingX, this.subject.position.y-this.paddingY);
+	}
+	relative(position){
+		this.center();
+		return new Position(position.x-this.position.x, position.y-this.position.y);
+	}
+	setSubject(subject){
+		this.subject = subject;
+	}
+}
+function areColliding(a, b) {
+	return !(a.position.x+a.width<b.position.x || a.position.x>=b.position.x+b.width || a.position.y+a.height<b.position.y || a.position.y>=b.position.y+b.height);
+}
+class Animation extends Entity{
+	constructor(entity, width, height, x, y, img, nbColumns, nbLines, firstSprite, nbSprites, duration) {
+		super(width, height, x, y, img);
+		//this.entity = entity;
+		this.nbColumns = nbColumns;
+		this.nbLines = nbLines;
+		this.firstSprite = firstSprite;
+		this.nbSprites = nbSprites;
+		this.duration = duration;
+		this.currentSprite = firstSprite;
+		this.onPause = false;
+		this.onStop = false;
+		var that = this;
+		this.timer = setInterval(function () {
+			that.play();
+		}, that.duration/nbSprites*1000);
+	}
+	pause(){
+		this.onPause = true;
+	}
+	unpause() {
+		this.onPause = false;
+	}
+	paint(x, y){
+		if (this.onPause){
+			return;
+		}
+		var iC = ((this.currentSprite)%this.nbColumns);
+		var iL = Math.floor(this.currentSprite/this.nbColumns);
+		var spriteW = this.width/this.nbColumns;
+		var spriteH = this.height/this.nbLines;
+		cc.drawImage(this.img, iC*spriteW, iL*spriteH, spriteW, spriteH, x, y, spriteW, spriteH);
+	}
+	play(){
+		if(!this.onPause){
+			this.currentSprite++;
+			if(this.currentSprite >= this.firstSprite+this.nbSprites) {
+				this.currentSprite = this.firstSprite;
+			}
+		}
+	}
+	destroy(){
+		clearTimeout(this.timer);
+		super.destroy();
+	}
+}
+// class Button extends {
+//
+// }
+class Input {
+	constructor(possibleInputs){
+		this.possibleInputs = possibleInputs;
+		this.isPressed = [];
+		this.isPressed["q"] = false;
+		this.isPressed["d"] = false;
+		this.isPressed[" "] = false;
+		this.isPressed["r"] = false;
+		this.isPressed["clickLeft"] = false;
+		this.isPressed["clickRight"] = false;
+		this.possibleInputs.forEach(function(input) {
+			this.isPressed[input] = false;
+			document.addEventListener('keydown', (event) => {
+				const keyName = event.key;
+				if(keyName == input){
+					this.isPressed[input] = true;
+				}
+			});
+			document.addEventListener('keyup', (event) => {
+				const keyName = event.key;
+				if(keyName == input){
+					this.isPressed[input] = false;
+				}
+			});
+			document.addEventListener("mousedown", (event) => {
+				this.isPressed["clickLeft"] = true;
+			});
+			document.addEventListener("mouseup", (event) => {
+				this.isPressed["clickLeft"] = false;
+			});
+			// document.addEventListener("mousedown", (event) => {
+			// 	this.isPressed["clickRight"] = true;
+			// });
+			// document.addEventListener("mouseup", (event) => {
+			// 	this.isPressed["clickRight"] = false;
+			// });
+			document.addEventListener("mousemove", (event) => {
+				game.mouseEntity.position.x = event.clientX;
+				game.mouseEntity.position.y = event.clientY;
+			});
+		}, this);
+	}
+}
+</script>
